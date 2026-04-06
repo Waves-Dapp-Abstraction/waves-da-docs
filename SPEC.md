@@ -8,7 +8,7 @@ Provide **DApp Abstraction (DA)** on Waves:
 - Relayers submit transactions for better UX.
 - Two execution modes are supported:
   - **REGULAR** (fee refund possible)
-  - **VERIFIER** (originCaller-safe)
+  - **VERIFIER** (originCaller-safe but no relayer sponsored fee supported)
 
 This spec is **Waves/Ride oriented**: it defines **entrypoints**, **parameter formats**, and **storage schema**.
 
