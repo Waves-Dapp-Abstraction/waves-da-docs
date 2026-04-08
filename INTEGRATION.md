@@ -83,13 +83,45 @@ Example (REGULAR, user must reimburse fee on-chain; refund guard may run):
 
 `withdraw` here uses VERIFIER (`useOrigin: true`) so your contract sees the expected **`originCaller`**.
 
-### 5. Call via HTTP (`POST /invoke`)
+### 5. Authentication (relayer requires Bearer token)
 
-The client sends **`eoa`**, **`targetDapp`**, **`function`**, **`args`**, and optional **`payments`** — not the execution mode, and **not** `reimburseFee` (the relayer sets fee refund on the built tx from `sponsorFee` / `useOrigin` in `dappConfig.json`).
+All `/invoke` requests require **JWT authentication**. The client must authenticate once, then reuse the token.
+
+**Recommended:** Use the SDK's `RelayerAuthClient.loginAndAuthenticate()` for seamless one-flow UX:
+
+```ts
+import { RelayerAuthClient, RelayerSession } from "waves-da-sdk";
+import { Signer } from "@waves/signer";
+import { ProviderKeeper } from "@waves/provider-keeper";
+
+const signer = new Signer({ NODE_URL: "https://nodes-testnet.wavesnodes.com" });
+signer.setProvider(new ProviderKeeper());
+
+const authClient = new RelayerAuthClient("http://localhost:3000");
+const session = new RelayerSession();
+
+// One call: user logs in via wallet + authenticates with relayer
+// Token is saved to localStorage for reuse
+const auth = await authClient.loginAndAuthenticate(signer, session);
+
+console.log("Token:", auth.token);
+console.log("EOA:", auth.eoa);
+```
+
+**Next time:** Token is cached; call reuses it if still valid (zero signing).
+
+For details on the challenge-response flow, JWT expiry, and session management, see [`../relayer/AUTH.md`](../relayer/AUTH.md) and [`../sdk/README.md`](../sdk/README.md#relayer-authentication).
+
+---
+
+### 6. Call via HTTP (`POST /invoke`)
+
+The client sends **`eoa`**, **`targetDapp`**, **`function`**, **`args`**, optional **`payments`**, and **`Authorization: Bearer {token}`** header. The token comes from `loginAndAuthenticate()` in the previous step.
 
 ```bash
 curl -s -X POST http://localhost:3000/invoke \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-jwt-token>" \
   -d '{
     "eoa": "3N...",
     "targetDapp": "3YourTargetDApp...",
@@ -100,7 +132,7 @@ curl -s -X POST http://localhost:3000/invoke \
 
 If your method is VERIFIER in config, the relayer still only needs the same shape; it builds the VERIFIER tx internally.
 
-### 6. Direct SDK usage (without HTTP)
+### 7. Direct SDK usage (without HTTP)
 
 Integrators can build transactions in the browser or backend using the same SDK the relayer uses.
 

@@ -41,16 +41,34 @@ Check: `GET http://localhost:3000/health` → `{"ok":true}`.
 
 ---
 
-## 2. Frontend — call the relayer (no SDK)
+## 2. Frontend — call the relayer (with authentication)
 
-The simplest path: the browser sends HTTP to the relayer; no SDK required for that.
+The relayer requires **JWT authentication** for all `/invoke` calls. Use the SDK's `RelayerAuthClient` for seamless login + authenticate in one flow:
 
 ```ts
+import { RelayerAuthClient, RelayerSession } from "waves-da-sdk";
+import { Signer } from "@waves/signer";
+import { ProviderKeeper } from "@waves/provider-keeper";
+
+// Setup
+const signer = new Signer({ NODE_URL: "https://nodes-testnet.wavesnodes.com" });
+signer.setProvider(new ProviderKeeper());
+
+const authClient = new RelayerAuthClient("http://localhost:3000");
+const session = new RelayerSession();
+
+// One-liner: login → authenticate (no intermediate steps!)
+const auth = await authClient.loginAndAuthenticate(signer, session);
+
+// Now send invoke with the token
 const res = await fetch("http://localhost:3000/invoke", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${auth.token}`, // Token from auth
+  },
   body: JSON.stringify({
-    eoa: userAddressBase58,
+    eoa: auth.eoa,
     targetDapp: "3PYourDappAddressHere",
     function: "myMethod",
     args: [1, "hello", true],
@@ -60,11 +78,13 @@ const data = await res.json();
 // typical success: { ok: true, mode: "regular", txId: "..." }
 ```
 
-Adjust the URL if the relayer is not local. In production, use HTTPS and appropriate auth (out of scope here).
+**Next calls:** Token is cached in localStorage; `loginAndAuthenticate()` reuses it if valid (zero signing!)
 
 ---
 
-## 3. Frontend — SDK (`waves-da-sdk`) when you need it
+## 3. Frontend — SDK (`waves-da-sdk`) for advanced usage
+
+If you need to build transactions yourself (without the HTTP relayer):
 
 Install: `npm i waves-da-sdk`
 
@@ -88,7 +108,7 @@ const { da, daPubKey } = await getActiveDA(NODE_URL, {
 | Need | Doc |
 |------|-----|
 | Canonical **registry** address (one per network) | [`REGISTRY.md`](REGISTRY.md) |
-| Full endpoints / error codes | [`../relayer/README.md`](../relayer/README.md) |
-| SDK API (signatures, owner txs) | [`../sdk/README.md`](../sdk/README.md) |
+| Full endpoints / error codes / auth details | [`../relayer/README.md`](../relayer/README.md) and [`../relayer/AUTH.md`](../relayer/AUTH.md) |
+| SDK API (signatures, owner txs, RelayerAuthClient) | [`../sdk/README.md`](../sdk/README.md) |
 | End-to-end flow, permissions, REGULAR vs VERIFIER | [`INTEGRATION.md`](INTEGRATION.md) |
 | On-chain schema, `proxy`, Registry | [`SPEC.md`](SPEC.md) |
