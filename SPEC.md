@@ -65,6 +65,8 @@ Goal: originCaller compatibility.
 - Allowlisted relayers only:
   - relayer pubkey must be stored in DA state and verified in `@Verifier`
 
+Off-chain, the **InvokeScript** transaction is built with `senderPublicKey` = **DA public key** (from the Registry’s `activeDA_pk_<eoa>`), while **`proofs[0]`** is the relayer’s signature over the transaction bytes (`@waves/waves-transactions` + DA `@Verifier`). The JSON field `sender` on-chain is then the **DA address**, not the relayer. Integrators using the monorepo must keep **`waves-da-sdk` `dist/`** rebuilt after SDK changes (`cd sdk && npm run build`); otherwise the relayer can report VERIFIER policy while still building a REGULAR-shaped tx.
+
 ---
 
 ## 3. DA Wallet v1 — Interface & Data Schema
