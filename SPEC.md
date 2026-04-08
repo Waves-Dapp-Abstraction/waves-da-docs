@@ -36,7 +36,7 @@ Registry is used by SDK/frontend to resolve the active DA for an EOA.
 Open-source HTTP service (see `relayer/`):
 - builds & broadcasts `InvokeScript` transactions via the SDK
 - **whitelist** of target dApps and callable methods (`dappConfig.json`)
-- per-method **`useOrigin`** and **`sponsorFee`** — the relayer selects REGULAR vs VERIFIER and fee policy; clients do not pass a mode flag
+- per-method **`useVerifierMode`** and **`sponsorFee`** — the relayer selects REGULAR vs VERIFIER and fee policy; clients do not pass a mode flag
 - optional **`refundGuard`**: for REGULAR when `sponsorFee` is false, validates the built tx against the node’s `/debug/validate` trace so a fee refund to the relayer is present (see `relayer/FEE_AND_REFUND.md`)
 - session/challenge auth is **planned** for production hardening (not yet required for the current HTTP contract)
 
@@ -185,7 +185,7 @@ The relayer loads a JSON map (default path `./dappConfig.json`, overridable with
 {
   "<targetDappAddressBase58>": {
     "<callableName>": {
-      "useOrigin": false,
+      "useVerifierMode": false,
       "sponsorFee": false
     }
   }
@@ -194,8 +194,8 @@ The relayer loads a JSON map (default path `./dappConfig.json`, overridable with
 
 | Field | Meaning |
 |-------|--------|
-| `useOrigin` | `false` → **REGULAR** (relayer is transaction sender; `proxy` with empty `relayerPubKeyBase58`). `true` → **VERIFIER** (DA is sender; relayer pubkey passed into `proxy` and verified in `@Verifier`). |
-| `sponsorFee` | Only applies when `useOrigin` is `false`. If `true`, the relayer pays the network fee and does not require a DA-side refund (no refund guard). If `false`, the relayer sets **`reimburseFee: true`** on the built `proxy` call and may run the **refund guard** (unless disabled). Must not be `true` when `useOrigin` is `true`. HTTP clients do **not** send `reimburseFee`; it is derived from this config. |
+| `useVerifierMode` | `false` → **REGULAR** (relayer is transaction sender; `proxy` with empty `relayerPubKeyBase58`). `true` → **VERIFIER** (DA is sender; relayer pubkey passed into `proxy` and verified in `@Verifier`). |
+| `sponsorFee` | Only applies when `useVerifierMode` is `false`. If `true`, the relayer pays the network fee and does not require a DA-side refund (no refund guard). If `false`, the relayer sets **`reimburseFee: true`** on the built `proxy` call and may run the **refund guard** (unless disabled). Must not be `true` when `useVerifierMode` is `true`. HTTP clients do **not** send `reimburseFee`; it is derived from this config. |
 
 Environment variables (see `relayer/.env.example`): `PORT`, `NODE_URL`, `CHAIN_ID`, `REGISTRY_ADDRESS`, `RELAYER_SEED`, `FEE_REGULAR`, `FEE_VERIFIER`, `REFUND_GUARD_ENABLED` (default on; set to `false`/`0`/`no`/`off` to disable trace validation when the node has no `/debug/validate`).
 

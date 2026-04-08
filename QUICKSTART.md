@@ -22,14 +22,14 @@ Create or edit **`dappConfig.json`** in the relayer root (or set `DAPP_CONFIG_PA
 ```json
 {
   "3PYourDappAddressHere": {
-    "myMethod": { "useOrigin": false, "sponsorFee": false }
+    "myMethod": { "useVerifierMode": false, "sponsorFee": false }
   }
 }
 ```
 
 - Replace `3PYourDappAddressHere` and `myMethod` with your dApp address and callable name.
-- `useOrigin: false` is **REGULAR** mode (common default).
-- Fee refund on the built tx (`reimburseFee` passed into `DA.proxy`) is decided **only by the relayer** from `useOrigin` + `sponsorFee` — the HTTP client does **not** send `reimburseFee`.
+- `useVerifierMode: false` is **REGULAR** mode (common default).
+- Fee refund on the built tx (`reimburseFee` passed into `DA.proxy`) is decided **only by the relayer** from `useVerifierMode` + `sponsorFee` — the HTTP client does **not** send `reimburseFee`.
 
 Run:
 

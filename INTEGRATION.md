@@ -35,7 +35,7 @@ So off-chain code can resolve “which DA does this user use?”.
 | **Fee** | Often lower; DA can **reimburse** the relayer (`reimburseFee`) | DA pays; no relayer “sponsorship” of fee in the same way |
 | **Choose when** | You only care that the **DA** is the logical actor, or you control checks via `caller` | Your contract logic uses **`originCaller`** (or you need it to match the user/DA story) |
 
-**Relayer policy:** In production, the HTTP relayer must choose mode via **`dappConfig.json`** (`useOrigin`), not via untrusted client input. The SDK’s `buildInvokeViaDA(..., { useOrigin })` is what the relayer uses internally after it looks up the method config.
+**Relayer policy:** In production, the HTTP relayer must choose mode via **`dappConfig.json`** (`useVerifierMode`), not via untrusted client input. The SDK’s `buildInvokeViaDA(..., { useVerifierMode })` is what the relayer uses internally after it looks up the method config.
 
 ---
 
@@ -68,20 +68,20 @@ Use **`waves-da-sdk`** owner helpers, e.g. `buildApproveMethodsTx`, from the own
 ### 4. Configure the relayer
 
 - Set **`REGISTRY_ADDRESS`**, **`RELAYER_SEED`**, node URL, chain ID, fees (see [`relayer/README.md`](../relayer/README.md)).
-- Edit **`dappConfig.json`**: for your dApp address, add each callable you allow, with **`useOrigin`** and **`sponsorFee`** as required.
+- Edit **`dappConfig.json`**: for your dApp address, add each callable you allow, with **`useVerifierMode`** and **`sponsorFee`** as required.
 
 Example (REGULAR, user must reimburse fee on-chain; refund guard may run):
 
 ```json
 {
   "3YourTargetDApp...": {
-    "deposit": { "useOrigin": false, "sponsorFee": false },
-    "withdraw": { "useOrigin": true, "sponsorFee": false }
+    "deposit": { "useVerifierMode": false, "sponsorFee": false },
+    "withdraw": { "useVerifierMode": true, "sponsorFee": false }
   }
 }
 ```
 
-`withdraw` here uses VERIFIER (`useOrigin: true`) so your contract sees the expected **`originCaller`**.
+`withdraw` here uses VERIFIER (`useVerifierMode: true`) so your contract sees the expected **`originCaller`**.
 
 ### 5. Authentication (relayer requires Bearer token)
 
@@ -147,7 +147,7 @@ const tx = await buildInvokeViaDA(
     chainId,
     registry: registryAddress,
     eoa: userAddress,
-    useOrigin: false,
+    useVerifierMode: false,
     feeRegular,
     feeVerifier,
   },
@@ -163,7 +163,7 @@ const tx = await buildInvokeViaDA(
 );
 ```
 
-**VERIFIER** — `useOrigin: true` and pass relayer pubkey; relayer seed still provides `proofs[0]`:
+**VERIFIER** — `useVerifierMode: true` and pass relayer pubkey; relayer seed still provides `proofs[0]`:
 
 ```ts
 import { publicKey } from "@waves/ts-lib-crypto";
@@ -177,7 +177,7 @@ const tx = await buildInvokeViaDA(
     chainId,
     registry: registryAddress,
     eoa: userAddress,
-    useOrigin: true,
+    useVerifierMode: true,
     feeRegular,
     feeVerifier,
   },
@@ -200,7 +200,7 @@ Full runnable samples: [`sdk/examples/regular.ts`](../sdk/examples/regular.ts), 
 ## Checklist for your dApp contract
 
 - Document which entrypoints are intended for **DA + relayer** and whether they depend on **`caller`** vs **`originCaller`**.
-- If you rely on **`originCaller`**, plan for **VERIFIER** and set **`useOrigin: true`** for those methods in `dappConfig.json`.
+- If you rely on **`originCaller`**, plan for **VERIFIER** and set **`useVerifierMode: true`** for those methods in `dappConfig.json`.
 - For **REGULAR**, remember the target sees **`originCaller`** as the relayer unless you only check **`caller`** (the DA).
 
 ---
