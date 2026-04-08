@@ -12,6 +12,10 @@ Provide **DApp Abstraction (DA)** on Waves:
 
 This spec is **Waves/Ride oriented**: it defines **entrypoints**, **parameter formats**, and **storage schema**.
 
+For a minimal first integration (relayer + front), see **[`QUICKSTART.md`](QUICKSTART.md)**.  
+For the canonical **registry** address (one per network, shared by all projects), see **[`REGISTRY.md`](REGISTRY.md)**.  
+For a full walkthrough (deploy, permissions, relayer, SDK), see **[`INTEGRATION.md`](INTEGRATION.md)**.
+
 ---
 
 ## 1. Components
@@ -29,11 +33,12 @@ Ride script maintaining:
 Registry is used by SDK/frontend to resolve the active DA for an EOA.
 
 ### 1.3 Relayer backend (off-chain)
-Open-source HTTP service:
-- session/auth
-- builds & broadcasts transactions
-- auto-selects REGULAR/VERIFIER via config
-- optional `refundGuard` (kept in v1)
+Open-source HTTP service (see `relayer/`):
+- builds & broadcasts `InvokeScript` transactions via the SDK
+- **whitelist** of target dApps and callable methods (`dappConfig.json`)
+- per-method **`useOrigin`** and **`sponsorFee`** — the relayer selects REGULAR vs VERIFIER and fee policy; clients do not pass a mode flag
+- optional **`refundGuard`**: for REGULAR when `sponsorFee` is false, validates the built tx against the node’s `/debug/validate` trace so a fee refund to the relayer is present (see `relayer/FEE_AND_REFUND.md`)
+- session/challenge auth is **planned** for production hardening (not yet required for the current HTTP contract)
 
 ---
 
@@ -44,6 +49,7 @@ Goal: best UX and optional fee sponsoring.
 
 - Transaction sender = relayer
 - In DA: `i.caller` = relayer
+- Target dApp sees correct `caller`(DA) but incorrect `originCaller` (Relayer)
 - DA invokes target dApp and can optionally refund fee to relayer:
   - `ScriptTransfer(relayer, i.fee, i.feeAssetId)` if `reimburseFee=true`
 - Limitation: NOT compatible with dApps relying on `originCaller`.
@@ -54,7 +60,7 @@ Goal: originCaller compatibility.
 - Transaction sender = DA
 - Relayer signs tx; DA pays the fee
 - In DA: `i.caller == this`
-- Target dApp sees correct `originCaller` (DA)
+- Target dApp sees correct `caller` (DA) and correct `originCaller` (DA)
 - No fee refund (by design)
 - Allowlisted relayers only:
   - relayer pubkey must be stored in DA state and verified in `@Verifier`
@@ -171,12 +177,38 @@ Writes:
 
 ## 5. Relayer backend — Contract (v1)
 
+### 5.1 Configuration (`dappConfig.json`)
+
+The relayer loads a JSON map (default path `./dappConfig.json`, overridable with env `DAPP_CONFIG_PATH`):
+
+```json
+{
+  "<targetDappAddressBase58>": {
+    "<callableName>": {
+      "useOrigin": false,
+      "sponsorFee": false
+    }
+  }
+}
+```
+
+| Field | Meaning |
+|-------|--------|
+| `useOrigin` | `false` → **REGULAR** (relayer is transaction sender; `proxy` with empty `relayerPubKeyBase58`). `true` → **VERIFIER** (DA is sender; relayer pubkey passed into `proxy` and verified in `@Verifier`). |
+| `sponsorFee` | Only applies when `useOrigin` is `false`. If `true`, the relayer pays the network fee and does not require a DA-side refund (no refund guard). If `false`, the relayer sets **`reimburseFee: true`** on the built `proxy` call and may run the **refund guard** (unless disabled). Must not be `true` when `useOrigin` is `true`. HTTP clients do **not** send `reimburseFee`; it is derived from this config. |
+
+Environment variables (see `relayer/.env.example`): `PORT`, `NODE_URL`, `CHAIN_ID`, `REGISTRY_ADDRESS`, `RELAYER_SEED`, `FEE_REGULAR`, `FEE_VERIFIER`, `REFUND_GUARD_ENABLED` (default on; set to `false`/`0`/`no`/`off` to disable trace validation when the node has no `/debug/validate`).
+
+### 5.2 HTTP behavior (summary)
+
+- **`POST /invoke`** body: `eoa`, `targetDapp`, `function`, `args`, optional `payments`. (Legacy `reimburseFee` in JSON is ignored — the relayer sets it from `dappConfig`.) Requests to unknown dApps or methods → `403` with `DAPP_NOT_WHITELISTED` or `METHOD_NOT_ALLOWED`.
+- Mode and fees follow **`dappConfig.json`** + env, not a client-supplied mode.
+- **Refund guard** (when enabled): after building a REGULAR tx with `sponsorFee: false`, the service checks the execution trace for a transfer to the relayer matching the tx fee (defense in depth vs trusting `reimburseFee` alone).
+
+### 5.3 Roadmap (non-contractual)
+
 - Session auth via server challenge + TTL + anti-replay
-- Project config drives mode selection:
-  - `useOrigin=false` => REGULAR
-  - `useOrigin=true` => VERIFIER
-- Builds and broadcasts InvokeScript tx
-- Optional `refundGuard` kept in v1 (feature flag)
+- Stricter rate limiting and structured operational logging
 
 ---
 
