@@ -1,30 +1,33 @@
-# Shared Registry
+# Registry — Adresses par Network
 
-The ecosystem uses **one Registry** contract per network. You deploy it once; **every** integrated dApp and relayer uses the same registry address.
+Le Registry est le contrat partagé qui mappe `EOA → DA wallet`.
 
-That way a user’s **DA wallet** is registered once and can be reused across **all** projects that participate in this abstraction layer.
-
-## Canonical addresses
-
-Fill in after deployment (keep this file in sync with your deployment):
-
-| Network | Registry address (base58) |
-|---------|---------------------------|
-| Testnet | `TBD` — replace with your deployed Registry |
-| Mainnet | `TBD` |
-
-Use this value everywhere:
-
-| Where | Variable / field |
-|-------|------------------|
-| Relayer `.env` | `REGISTRY_ADDRESS` |
-| Frontend / SDK `getActiveDA()` | `registry` in `{ registry, eoa }` |
-
-Do not use a different registry per project unless you fork the ecosystem and accept that users will have separate DA mappings per registry.
+**Un seul Registry par network**, utilisé par tous les projets et relayers.  
+Cela signifie qu'un utilisateur crée son DA wallet une seule fois et peut l'utiliser sur tous les projets intégrés.
 
 ---
 
-## See also
+## Adresses
 
-- [`SPEC.md`](SPEC.md) — Registry storage keys and `registerFromDA`
-- [`INTEGRATION.md`](INTEGRATION.md) — init flow and Registry invocation
+| Network | Registry address |
+|---------|-----------------|
+| Testnet | `TBD` |
+| Mainnet | `TBD` |
+
+---
+
+## Utilisation
+
+Utilisez cette adresse partout :
+
+| Où | Variable |
+|----|----------|
+| Relayer `.env` | `REGISTRY_ADDRESS` |
+| SDK frontend | `registry` dans `getActiveDAOrNull(nodeUrl, { registry, eoa })` |
+
+---
+
+## Notes
+
+- Ne déployez **pas** votre propre Registry sauf si vous créez un écosystème séparé
+- Un Registry différent = DA wallets séparés (les utilisateurs devraient créer un nouveau DA)
