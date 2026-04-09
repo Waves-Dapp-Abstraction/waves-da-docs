@@ -1,93 +1,104 @@
-# Integration guide — DApp Abstraction (DA)
+# Integration Guide — DApp Abstraction (DA)
 
-This guide is for teams that want users to interact with **your dApp** through a **DA Wallet** and optionally a **relayer**. It complements [`SPEC.md`](SPEC.md) and the component READMEs.
+Guide pour intégrer **DA Wallets** dans votre dApp Waves.
 
-> **Want a shorter path first?** See **[`QUICKSTART.md`](QUICKSTART.md)** — minimal relayer setup + front `fetch` + optional SDK usage.  
-> **Registry:** one canonical address per network — [`REGISTRY.md`](REGISTRY.md).
-
----
-
-## Concepts
-
-### DA Wallet (`sdk/contracts/da/DA.ride` in `waves-da-sdk`)
-
-A smart account that:
-
-- is **bound to an EOA** (the “owner”) via the Registry
-- can **`proxy`** invocations to any whitelisted target dApp when a **relayer** has permission
-- supports **REGULAR** and **VERIFIER** execution for that proxy call
-
-### Registry (`contracts/registry/Registry.ride`)
-
-Stores:
-
-- `activeDA_<eoa>` → DA address  
-- `activeDA_pk_<eoa>` → DA public key  
-
-So off-chain code can resolve “which DA does this user use?”.
-
-### REGULAR vs VERIFIER (when to use which)
-
-| | REGULAR | VERIFIER |
-|---|---------|----------|
-| **Tx sender** | Relayer | DA (smart account) |
-| **`originCaller` on your dApp** | Relayer (not the user’s identity) | DA (matches user’s abstraction identity) |
-| **Fee** | Often lower; DA can **reimburse** the relayer (`reimburseFee`) | DA pays; no relayer “sponsorship” of fee in the same way |
-| **Choose when** | You only care that the **DA** is the logical actor, or you control checks via `caller` | Your contract logic uses **`originCaller`** (or you need it to match the user/DA story) |
-
-**Relayer policy:** In production, the HTTP relayer must choose mode via **`dappConfig.json`** (`useVerifierMode`), not via untrusted client input. The SDK’s `buildInvokeViaDA(..., { useVerifierMode })` is what the relayer uses internally after it looks up the method config.
+**TLDR :** Utilisateurs → DA Wallet → Relayer → Votre dApp.
 
 ---
 
-## End-to-end flow
+## Concepts clés
 
-### 1. Deploy Registry and DA (tooling or manual)
+### DA Wallet
+- Smart account **unique par utilisateur**, lié à son adresse EOA
+- Peut **appeler vos fonctions** via un relayer de confiance
+- L'utilisateur signe une fois pour authentifier le relayer
 
-- Deploy [`Registry.ride`](../contracts/registry/Registry.ride) and the DA script from [`sdk/contracts/da/DA.ride`](../sdk/contracts/da/DA.ride) (same file ships in the SDK package) per your environment.
-- See [`tooling/README.md`](../tooling/README.md) for scripted deploy/init.
+### Registry
+- Contrat qui mappe : `EOA → DA Wallet address`
+- Permet au relayer de trouver le DA de l'utilisateur
 
-### 2. Initialize the DA for the user
+### Relayer
+- Service HTTP qui signe les transactions au nom de l'utilisateur
+- Nécessite une authentification JWT (challenge-response)
+- Gère les frais et l'économie des transactions
 
-1. Before `SetScript`, set **`pendingOwner`** on the DA account to the user’s EOA (base58).
-2. Install the DA script (`SetScript`).
-3. The **EOA** calls **`initAndRegister(registryAddress)`** on the DA.
+---
 
-The Registry then maps **EOA → DA** for `getActiveDA` / relayer use.
+## Workflow complet
 
-### 3. Allowlist the relayer on the DA (owner)
+### 1. L'utilisateur a-t-il déjà un DA wallet ?
 
-The relayer exposes its public key via **`GET /info`** (`relayerPubKey`). On-chain permission entrypoints take **`relayerPubKeyBase58`** as the first argument (not the relayer address string). The contract derives the relayer address from that pubkey for storage keys such as `allow_<relayerAddr>_...`.
+```ts
+import { getActiveDAOrNull } from "waves-da-sdk";
 
-Typical steps:
+const da = await getActiveDAOrNull(nodeUrl, {
+  registry: "3N...",
+  eoa: userAddress
+});
 
-1. Store the relayer pubkey on the DA: `relayerPk_<relayerAddr>` must match (handled when you use the provided `approveMethods` / verifier flow in tests).
-2. Call **`approveMethods`** (or **`allowAllOnDapp`**) for your **target dApp address** and the **method names** the relayer may call, with optional **`expireHeight`**.
-
-Use **`waves-da-sdk`** owner helpers, e.g. `buildApproveMethodsTx`, from the owner’s wallet.
-
-### 4. Configure the relayer
-
-- Set **`REGISTRY_ADDRESS`**, **`RELAYER_SEED`**, node URL, chain ID, fees (see [`relayer/README.md`](../relayer/README.md)).
-- Edit **`dappConfig.json`**: for your dApp address, add each callable you allow, with **`useVerifierMode`** and **`sponsorFee`** as required.
-
-Example (REGULAR, user must reimburse fee on-chain; refund guard may run):
-
-```json
-{
-  "3YourTargetDApp...": {
-    "deposit": { "useVerifierMode": false, "sponsorFee": false },
-    "withdraw": { "useVerifierMode": true, "sponsorFee": false }
-  }
+if (!da) {
+  // Créer un nouveau DA (voir étape 2)
+} else {
+  // DA existe, continuer à l'étape 3
 }
 ```
 
-`withdraw` here uses VERIFIER (`useVerifierMode: true`) so your contract sees the expected **`originCaller`**.
+### 2. Créer un DA wallet pour l'utilisateur
 
-### 5. Authentication (relayer requires Bearer token)
+Si l'utilisateur n'a pas de DA, il faut le créer une seule fois.
 
-All `/invoke` requests require **JWT authentication**. The client must authenticate once, then reuse the token.
+```ts
+import { randomSeed, address, publicKey } from "@waves/ts-lib-crypto";
+import { broadcast, waitForTx } from "@waves/waves-transactions";
+import {
+  DA_RIDE_SOURCE,
+  compileDaScript,
+  buildDeployDATx,
+  buildSetPendingOwnerDataTx,
+  buildInitAndRegisterTx,
+} from "waves-da-sdk";
 
-**Recommended:** Use the SDK's `RelayerAuthClient.loginAndAuthenticate()` for seamless one-flow UX:
+// 1. Générer une adresse DA (nouvelle clé)
+const daSeed = randomSeed(15);
+const daAddress = address({ publicKey: publicKey(daSeed) }, chainId);
+
+// 2. Financer le DA (transfert simple depuis l'EOA)
+await signer.transfer({
+  amount: 3000000,
+  recipient: daAddress
+}).broadcast();
+
+// 3. Compiler et déployer le script DA
+const compiled = await compileDaScript(nodeUrl, DA_RIDE_SOURCE);
+const deployTx = buildDeployDATx(
+  { chainId, fee: 1400000, compiledScript: compiled },
+  daSeed
+);
+await waitForTx((await broadcast(deployTx, nodeUrl)).id, { apiBase: nodeUrl });
+
+// 4. Définir l'EOA comme propriétaire
+const dataTx = buildSetPendingOwnerDataTx(
+  { chainId, fee: 500000, eoaAddress: userAddress },
+  daSeed
+);
+await waitForTx((await broadcast(dataTx, nodeUrl)).id, { apiBase: nodeUrl });
+
+// 5. Enregistrer le DA dans le Registry (depuis l'EOA)
+await signer.invoke({
+  dApp: daAddress,
+  call: {
+    function: "initAndRegister",
+    args: [{ type: "string", value: registryAddress }],
+  },
+  payment: [],
+}).broadcast();
+
+console.log("DA wallet créé :", daAddress);
+```
+
+> **Important :** Montrez à l'utilisateur la **graine du DA** et demandez-lui de la sauvegarder (pour la récupération).
+
+### 3. Authentifier l'utilisateur avec le relayer
 
 ```ts
 import { RelayerAuthClient, RelayerSession } from "waves-da-sdk";
@@ -100,118 +111,87 @@ signer.setProvider(new ProviderKeeper());
 const authClient = new RelayerAuthClient("http://localhost:3000");
 const session = new RelayerSession();
 
-// One call: user logs in via wallet + authenticates with relayer
-// Token is saved to localStorage for reuse
+// Une seule étape : wallet login + authentification relayer
 const auth = await authClient.loginAndAuthenticate(signer, session);
 
-console.log("Token:", auth.token);
-console.log("EOA:", auth.eoa);
+// Token automatiquement caché et réutilisé
+console.log("Authentifié :", auth.eoa);
 ```
 
-**Next time:** Token is cached; call reuses it if still valid (zero signing).
+### 4. Configurer la permission du relayer (une seule fois)
 
-For details on the challenge-response flow, JWT expiry, and session management, see [`../relayer/AUTH.md`](../relayer/AUTH.md) and [`../sdk/README.md`](../sdk/README.md#relayer-authentication).
-
----
-
-### 6. Call via HTTP (`POST /invoke`)
-
-The client sends **`eoa`**, **`targetDapp`**, **`function`**, **`args`**, optional **`payments`**, and **`Authorization: Bearer {token}`** header. The token comes from `loginAndAuthenticate()` in the previous step.
-
-```bash
-curl -s -X POST http://localhost:3000/invoke \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <your-jwt-token>" \
-  -d '{
-    "eoa": "3N...",
-    "targetDapp": "3YourTargetDApp...",
-    "function": "deposit",
-    "args": [1000000]
-  }'
-```
-
-If your method is VERIFIER in config, the relayer still only needs the same shape; it builds the VERIFIER tx internally.
-
-### 7. Direct SDK usage (without HTTP)
-
-Integrators can build transactions in the browser or backend using the same SDK the relayer uses.
-
-**REGULAR** — relayer seed signs; empty `relayerPubKeyBase58`:
+Le propriétaire du DA doit autoriser le relayer à appeler certaines fonctions.
 
 ```ts
-import { buildInvokeViaDA } from "waves-da-sdk";
+import { buildApproveMethodsTx } from "waves-da-sdk";
 
-const tx = await buildInvokeViaDA(
-  nodeUrl,
+// L'EOA (propriétaire du DA) signe :
+const approveTx = buildApproveMethodsTx(
   {
     chainId,
-    registry: registryAddress,
-    eoa: userAddress,
-    useVerifierMode: false,
-    feeRegular,
-    feeVerifier,
+    da: daAddress,          // adresse du DA
+    fee: 500000,
+    relayerPubKeyBase58: relayerPublicKey,  // depuis GET /info du relayer
+    targetDapp: yourDappAddress,
+    methods: ["deposit", "withdraw"],
+    expireHeight: 0,        // 0 = pas d'expiry
   },
-  {
-    targetDapp: yourDapp,
+  signer
+);
+
+await signer.broadcast(approveTx);
+```
+
+### 5. Appeler votre dApp via le relayer
+
+Une fois authentifié (étape 3) :
+
+```ts
+const response = await fetch("http://localhost:3000/invoke", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${auth.token}`,
+  },
+  body: JSON.stringify({
+    eoa: auth.eoa,
+    targetDapp: "3YourDAppAddress...",
     function: "deposit",
-    args: [amount],
-    reimburseFee: true,
-    payments: [{ amount: paymentAmount }],
-    relayerPubKeyBase58: "",
-  },
-  relayerSeed
-);
+    args: [1000000],
+    payments: [{ amount: 5000000 }],
+  }),
+});
+
+const result = await response.json();
+console.log("Tx ID:", result.txId);
 ```
-
-**VERIFIER** — `useVerifierMode: true` and pass relayer pubkey; relayer seed still provides `proofs[0]`:
-
-```ts
-import { publicKey } from "@waves/ts-lib-crypto";
-import { buildInvokeViaDA } from "waves-da-sdk";
-
-const relayerPubKeyBase58 = publicKey(relayerSeed);
-
-const tx = await buildInvokeViaDA(
-  nodeUrl,
-  {
-    chainId,
-    registry: registryAddress,
-    eoa: userAddress,
-    useVerifierMode: true,
-    feeRegular,
-    feeVerifier,
-  },
-  {
-    targetDapp: yourDapp,
-    function: "withdraw",
-    args: [amount],
-    reimburseFee: false,
-    payments: [],
-    relayerPubKeyBase58,
-  },
-  relayerSeed
-);
-```
-
-Full runnable samples: [`sdk/examples/regular.ts`](../sdk/examples/regular.ts), [`sdk/examples/verifier.ts`](../sdk/examples/verifier.ts).
 
 ---
 
-## Checklist for your dApp contract
+## Checklist pour votre dApp
 
-- Document which entrypoints are intended for **DA + relayer** and whether they depend on **`caller`** vs **`originCaller`**.
-- If you rely on **`originCaller`**, plan for **VERIFIER** and set **`useVerifierMode: true`** for those methods in `dappConfig.json`.
-- For **REGULAR**, remember the target sees **`originCaller`** as the relayer unless you only check **`caller`** (the DA).
+- [ ] Utilisateurs peuvent-ils checker s'ils ont un DA ? (via `getActiveDAOrNull`)
+- [ ] Avez-vous un bouton "Créer un DA" pour les nouveaux utilisateurs ?
+- [ ] L'authentification relayer est-elle seamless (une seule connexion wallet) ?
+- [ ] Les fonctions que vous appelez via relayer acceptent-elles le DA comme appelant ?
 
 ---
 
-## References
+## Dépannage
 
-| Document | Purpose |
-|----------|---------|
-| [`REGISTRY.md`](REGISTRY.md) | Canonical shared registry address per network |
-| [`SPEC.md`](SPEC.md) | Storage schema, `proxy` arguments, Registry |
-| [`../sdk/README.md`](../sdk/README.md) | SDK API and types |
-| [`../relayer/README.md`](../relayer/README.md) | Env vars, `dappConfig.json`, HTTP errors |
-| [`../contracts/da/README.md`](../contracts/da/README.md) | DA entrypoints and storage keys |
-| [`../tooling/README.md`](../tooling/README.md) | On-chain deploy and E2E tests |
+**Q: "User doesn't have a DA"**  
+A: Lancez l'étape 2 (création du DA). C'est un one-time setup par utilisateur.
+
+**Q: "401 Unauthorized"**  
+A: Token expiré ou invalide. Rappelez au signer de se reconnecter via `loginAndAuthenticate`.
+
+**Q: "originCaller n'est pas l'utilisateur"**  
+A: Vous voyez l'adresse du relayer. C'est normal en **REGULAR mode**. Demandez au relayer de basculer en **VERIFIER mode** pour votre méthode.
+
+---
+
+## Références
+
+- [`sdk/README.md`](../sdk/README.md) — API complète du SDK
+- [`relayer/README.md`](../relayer/README.md) — Setup et configuration du relayer
+- [`REGISTRY.md`](REGISTRY.md) — Adresses Registry per network
