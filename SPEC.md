@@ -2,7 +2,7 @@
 
 Pour les intégrateurs qui veulent comprendre le protocole en détail.
 
-**Pour débuter rapidement**, voir [QUICKSTART.md](QUICKSTART.md) ou [INTEGRATION.md](INTEGRATION.md).
+**To integrate a dApp**, start with [README.md](README.md) → [QUICKSTART.md](QUICKSTART.md). This file is the on-chain protocol reference.
 
 ---
 

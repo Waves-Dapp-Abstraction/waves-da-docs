@@ -1,33 +1,36 @@
-# Registry — Adresses par Network
+# Registry — addresses per network
 
-Le Registry est le contrat partagé qui mappe `EOA → DA wallet`.
+**Testnet (copy-paste):** `3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr` — `CHAIN_ID=84`
 
-**Un seul Registry par network**, utilisé par tous les projets et relayers.  
-Cela signifie qu'un utilisateur crée son DA wallet une seule fois et peut l'utiliser sur tous les projets intégrés.
+The Registry maps **EOA → active DA wallet**.
 
----
-
-## Adresses
-
-| Network | Registry address |
-|---------|-----------------|
-| Testnet | `TBD` |
-| Mainnet | `TBD` |
+**One Registry per network** for the whole ecosystem. Users create their DA once and reuse it across integrated dApps.
 
 ---
 
-## Utilisation
+## Canonical addresses
 
-Utilisez cette adresse partout :
+| Network | Chain ID | Registry address | Status |
+|---------|----------|------------------|--------|
+| Testnet | `84` | `3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr` | Deployed |
+| Mainnet | `87` | `TBD` | Not published yet |
 
-| Où | Variable |
-|----|----------|
+---
+
+## Where to use the same address
+
+| Component | Setting |
+|-----------|---------|
 | Relayer `.env` | `REGISTRY_ADDRESS` |
-| SDK frontend | `registry` dans `getActiveDAOrNull(nodeUrl, { registry, eoa })` |
+| SDK | `registry` in `getActiveDAOrNull(nodeUrl, { registry, eoa })` |
+| Your dApp config | Same base58 on testnet |
+
+**Node URL** must match the network (`nodes-testnet` vs mainnet).
 
 ---
 
 ## Notes
 
-- Ne déployez **pas** votre propre Registry sauf si vous créez un écosystème séparé
-- Un Registry différent = DA wallets séparés (les utilisateurs devraient créer un nouveau DA)
+- Do not deploy a separate Registry unless you run an isolated ecosystem
+- A different Registry means separate DA mappings (users must create a new DA)
+- Contract upgrades use `SetScript` on the same address (maintainers only)

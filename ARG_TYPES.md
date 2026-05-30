@@ -1,5 +1,7 @@
 # Supported Argument Types
 
+> Only needed for `List`, `ByteVector`, or mixed args. Basic `Int` / `String` / `Boolean` → see [QUICKSTART.md](QUICKSTART.md).
+
 The Waves DA system supports **all callable argument types** from the Waves blockchain:
 
 - **Scalars**: Int, String, Boolean, ByteVector
@@ -357,6 +359,6 @@ If binary data is not valid Base64:
 ## References
 
 - **SDK**: [waves-da-sdk on npm](https://www.npmjs.com/package/waves-da-sdk)
-- **Relayer HTTP API**: See `relayer/README.md` → "HTTP API" section
+- **Relayer HTTP API**: [waves-da-relayer README](https://github.com/Waves-Dapp-Abstraction/waves-da-relayer/blob/master/README.md) (HTTP API section)
 - **Integration Guide**: See `docs/INTEGRATION.md`
 - **Full Protocol Spec**: See `docs/SPEC.md`

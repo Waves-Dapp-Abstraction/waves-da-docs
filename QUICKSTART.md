@@ -1,57 +1,57 @@
-# Quickstart — Intégrer DA Wallets dans votre dApp
+# Quickstart — integrate DA in your dApp
 
-Ce guide couvre l'essentiel pour connecter votre dApp au relayer et au SDK.
+**Prerequisite:** user already has a DA registered on the testnet Registry. If not, send them to your DA creation UI or see [INTEGRATION.md](INTEGRATION.md).
 
-**Prérequis :** Registry déployé, utilisateur avec un DA wallet initialisé.  
-Voir [INTEGRATION.md](INTEGRATION.md) pour le flow complet de création.
+**Testnet registry:** `3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr` — [REGISTRY.md](REGISTRY.md)
 
 ---
 
-## 1. Setup du relayer (backend)
+## 1. Relayer (your backend)
 
 ```bash
-git clone https://github.com/Waves-Dapp-Abstraction/waves-da-relayer
+git clone https://github.com/Waves-Dapp-Abstraction/waves-da-relayer.git
 cd waves-da-relayer
 npm install
 cp .env.example .env
 ```
 
-Dans `.env`, configurez au minimum :
+Minimum `.env`:
 
 ```env
 NODE_URL=https://nodes-testnet.wavesnodes.com
-CHAIN_ID=T
-REGISTRY_ADDRESS=3N...   # adresse du Registry partagé (voir REGISTRY.md)
-RELAYER_SEED=your seed phrase here
+CHAIN_ID=84
+REGISTRY_ADDRESS=3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr
+RELAYER_SEED=<testnet seed with WAVES>
+JWT_SECRET=<random string for dev>
 ```
 
-Créez `dappConfig.json` pour whitelist votre dApp :
+`dappConfig.json` — whitelist your dApp and methods:
 
 ```json
 {
-  "3PYourDappAddress...": {
-    "deposit": { "useVerifierMode": false, "sponsorFee": false },
-    "withdraw": { "useVerifierMode": true,  "sponsorFee": false }
+  "3PYourDappAddress": {
+    "myMethod": { "useVerifierMode": false, "sponsorFee": false }
   }
 }
 ```
-
-Démarrez le relayer :
 
 ```bash
 npm start
 ```
 
-Vérification : `GET http://localhost:3000/health` → `{"ok":true}`
+| Check | URL |
+|-------|-----|
+| Health | `GET http://localhost:3000/health` |
+| Relayer pubkey (`approveMethods`) | `GET http://localhost:3000/info` → `relayerPubKey` |
+
+Relayer setup details: [waves-da-relayer README](https://github.com/Waves-Dapp-Abstraction/waves-da-relayer/blob/master/README.md)
 
 ---
 
-## 2. Frontend — Authentifier et appeler via le relayer
-
-Installez le SDK :
+## 2. SDK (your frontend)
 
 ```bash
-npm i waves-da-sdk
+npm i waves-da-sdk @waves/signer @waves/provider-keeper
 ```
 
 ```ts
@@ -59,57 +59,62 @@ import { getActiveDAOrNull, RelayerAuthClient, RelayerSession } from "waves-da-s
 import { Signer } from "@waves/signer";
 import { ProviderKeeper } from "@waves/provider-keeper";
 
+const NODE_URL = "https://nodes-testnet.wavesnodes.com";
+const REGISTRY = "3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr";
 const RELAYER_URL = "http://localhost:3000";
-const REGISTRY    = "3N...";  // adresse Registry
 
-const signer = new Signer({ NODE_URL: "https://nodes-testnet.wavesnodes.com" });
+const signer = new Signer({ NODE_URL });
 signer.setProvider(new ProviderKeeper());
 
-// 1. Vérifier si l'utilisateur a un DA wallet
-await signer.login();
-const eoa = (await signer.getPublicKey()) // ou signer.address selon le provider
+const { address: eoa } = await signer.login();
+
 const da = await getActiveDAOrNull(NODE_URL, { registry: REGISTRY, eoa });
+if (!da) throw new Error("No DA wallet");
 
-if (!da) {
-  // Rediriger vers waves-da.com pour créer un DA wallet
-  window.location.href = "https://waves-da.com";
-  return;
-}
+// Once per user: approve relayer on DA — see INTEGRATION.md
 
-// 2. Authentifier auprès du relayer
-const authClient = new RelayerAuthClient(RELAYER_URL);
-const session    = new RelayerSession();
-const auth       = await authClient.loginAndAuthenticate(signer, session);
-// Token JWT caché, réutilisé automatiquement lors des prochains appels
+const auth = await new RelayerAuthClient(RELAYER_URL).loginAndAuthenticate(
+  signer,
+  new RelayerSession()
+);
 
-// 3. Appeler votre dApp via le relayer
 const res = await fetch(`${RELAYER_URL}/invoke`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${auth.token}`,
+    Authorization: `Bearer ${auth.token}`,
   },
   body: JSON.stringify({
     eoa: auth.eoa,
-    targetDapp: "3PYourDappAddress...",
-    function: "deposit",
-    args: [1000000],
-    payments: [{ amount: 5000000 }],
+    targetDapp: "3PYourDappAddress",
+    function: "myMethod",
+    args: [],
+    payments: [],
   }),
 });
 
-const { txId } = await res.json();
-console.log("TX ID:", txId);
+const data = await res.json();
+if (!res.ok) throw new Error(data.error ?? res.statusText);
+console.log(data.txId, data.mode);
 ```
 
 ---
 
-## 3. Références
+## 3. Checklist
 
-| Besoin | Doc |
-|--------|-----|
-| Créer un DA wallet pour un utilisateur | [INTEGRATION.md](INTEGRATION.md) |
-| Adresses Registry par network | [REGISTRY.md](REGISTRY.md) |
-| Endpoints HTTP, codes d'erreur, auth | Relayer README |
-| REGULAR vs VERIFIER, permissions | [INTEGRATION.md](INTEGRATION.md) |
-| Schéma on-chain et spec | [SPEC.md](SPEC.md) |
+- [ ] `getActiveDAOrNull` — or create DA first
+- [ ] `approveMethods` on DA with `relayerPubKey` from `/info`
+- [ ] Method listed in `dappConfig.json`
+- [ ] Correct `useVerifierMode` if you use `originCaller`
+
+---
+
+## Next
+
+| Topic | Doc |
+|-------|-----|
+| Approve, errors, DA creation | [INTEGRATION.md](INTEGRATION.md) |
+| List / binary args | [ARG_TYPES.md](ARG_TYPES.md) |
+| HTTP API | [relayer README](https://github.com/Waves-Dapp-Abstraction/waves-da-relayer/blob/master/README.md) |
+| Auth details | [relayer AUTH.md](https://github.com/Waves-Dapp-Abstraction/waves-da-relayer/blob/master/AUTH.md) |
+| Example code | [sdk authFlow.ts](https://github.com/Waves-Dapp-Abstraction/waves-da-sdk/blob/master/examples/authFlow.ts) |

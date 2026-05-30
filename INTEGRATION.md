@@ -1,205 +1,135 @@
-# Integration Guide — DApp Abstraction (DA)
+# Integration guide — dApp + DA
 
-Guide complet pour intégrer DA Wallets dans votre dApp Waves.
+Builds on [QUICKSTART.md](QUICKSTART.md). Relayer HTTP API: [waves-da-relayer README](https://github.com/Waves-Dapp-Abstraction/waves-da-relayer/blob/master/README.md).
 
 ---
 
 ## Concepts
 
-### DA Wallet
-- Smart account **unique par utilisateur**, lié à son EOA
-- Proxy les invocations vers votre dApp via un relayer autorisé
-- L'utilisateur garde le contrôle (permissions, caps, pause)
-
-### Registry
-- Contrat partagé qui mappe `EOA → DA address`
-- Même Registry pour tous les projets sur un même network
-- Voir [REGISTRY.md](REGISTRY.md) pour les adresses
-
-### Relayer
-- Service HTTP qui signe et broadcast les transactions
-- Nécessite JWT (challenge-response)
-- Configuré par dApp et par méthode via `dappConfig.json`
+| | Role |
+|--|------|
+| **DA wallet** | Script account that calls your dApp for the user |
+| **Registry** | `EOA → DA` (one per network, [REGISTRY.md](REGISTRY.md)) |
+| **Relayer** | HTTP: JWT auth + `POST /invoke` |
+| **dappConfig.json** | Allowed methods + REGULAR or VERIFIER |
 
 ### REGULAR vs VERIFIER
 
 | | REGULAR | VERIFIER |
 |---|---------|----------|
-| **Sender** | Relayer | DA |
-| **`caller` sur votre dApp** | DA | DA |
-| **`originCaller` sur votre dApp** | Relayer | DA |
-| **Utiliser quand** | Vous n'utilisez pas `originCaller` | Vous avez besoin de `originCaller` |
-| **Fee** | Relayer paie (optionnel remboursement DA) | DA paie |
+| `originCaller` on your dApp | Relayer | DA |
+| Network fee | Relayer (optional DA refund) | DA |
+| Use when | You don't read `originCaller` | You need `originCaller` |
 
 ---
 
-## Flow complet
-
-### 1. L'utilisateur a-t-il un DA wallet ?
+## 1. Does the user have a DA?
 
 ```ts
 import { getActiveDAOrNull } from "waves-da-sdk";
 
 const da = await getActiveDAOrNull(nodeUrl, {
-  registry: REGISTRY_ADDRESS,
-  eoa: userAddress
+  registry: "3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr",
+  eoa: userAddress,
 });
 
 if (!da) {
-  // Option A : Rediriger vers waves-da.com
-  // Option B : Flow de création dans votre app (voir section 2)
+  // Send user to DA creation (your UI or hosted manager)
 }
 ```
 
 ---
 
-### 2. Créer un DA wallet (intégré dans votre app)
+## 2. Create a DA (optional)
 
-Si vous voulez intégrer la création de DA wallet dans votre flow, voici les 4 étapes. Sinon, redirigez vers **waves-da.com**.
-
-```ts
-import { randomSeed, address, publicKey } from "@waves/ts-lib-crypto";
-import { broadcast, waitForTx } from "@waves/waves-transactions";
-import {
-  DA_RIDE_SOURCE,
-  compileDaScript,
-  buildDeployDATx,
-  buildSetPendingOwnerDataTx,
-} from "waves-da-sdk";
-
-// Étape 1 : Générer le compte DA (côté client uniquement)
-const daSeed    = randomSeed(15);
-const daAddress = address({ publicKey: publicKey(daSeed) }, chainId);
-// ⚠️ Affichez la seed à l'utilisateur et demandez-lui de la sauvegarder
-
-// Étape 2 : Financer le DA (depuis le wallet de l'utilisateur)
-await signer.transfer({ amount: 3_000_000, recipient: daAddress }).broadcast();
-
-// Étape 3 : Déployer le script DA
-const compiled = await compileDaScript(nodeUrl, DA_RIDE_SOURCE);
-const deployTx = buildDeployDATx(
-  { chainId, fee: 1_400_000, compiledScript: compiled },
-  daSeed
-);
-await waitForTx((await broadcast(deployTx, nodeUrl)).id, { apiBase: nodeUrl });
-
-// Note: buildSetPendingOwnerDataTx n'est plus nécessaire séparément,
-// le pendingOwner est passé via buildDeployDATx depuis la v0.2+
-
-// Étape 4 : Enregistrer dans le Registry (l'utilisateur signe)
-await signer.invoke({
-  dApp: daAddress,
-  call: {
-    function: "initAndRegister",
-    args: [{ type: "string", value: REGISTRY_ADDRESS }],
-  },
-  payment: [],
-}).broadcast();
-
-console.log("DA wallet créé :", daAddress);
-```
+- **Recommended:** host or link a DA Manager UI for end users.
+- **In-app:** follow the four steps in the [sdk README](https://github.com/Waves-Dapp-Abstraction/waves-da-sdk/blob/master/README.md) (`randomSeed` → fund → deploy script → `initAndRegister`).
 
 ---
 
-### 3. Autoriser le relayer sur le DA (une seule fois par utilisateur)
+## 3. Approve the relayer (once per user)
 
-Le propriétaire du DA (l'EOA) doit autoriser le relayer à appeler certaines méthodes.
+The EOA signs on their DA:
 
 ```ts
 import { buildApproveMethodsTx } from "waves-da-sdk";
 
-// Récupérer la pubkey du relayer
-const { relayerPubKey } = await fetch("http://your-relayer/info").then(r => r.json());
+const { relayerPubKey } = await fetch(`${RELAYER_URL}/info`).then((r) => r.json());
 
-// Autoriser les méthodes
-const approveTx = buildApproveMethodsTx(
+const tx = buildApproveMethodsTx(
   {
-    chainId,
-    da: daAddress,
+    chainId: 84,
+    da: da.da,
     fee: 500_000,
     relayerPubKeyBase58: relayerPubKey,
     targetDapp: YOUR_DAPP_ADDRESS,
     methods: ["deposit", "withdraw"],
-    expireHeight: 0,  // 0 = pas d'expiry
+    expireHeight: 0,
   },
   signer
 );
-
-await signer.broadcast(approveTx);
+await signer.broadcast(tx);
 ```
 
 ---
 
-### 4. Configurer le relayer
+## 4. Configure your relayer
 
-Editez `dappConfig.json` sur votre relayer :
+On your [waves-da-relayer](https://github.com/Waves-Dapp-Abstraction/waves-da-relayer) instance, edit `dappConfig.json`:
 
 ```json
 {
-  "3PYourDappAddress...": {
+  "3PYourDapp": {
     "deposit":  { "useVerifierMode": false, "sponsorFee": false },
     "withdraw": { "useVerifierMode": true,  "sponsorFee": false }
   }
 }
 ```
 
-- `useVerifierMode: false` → **REGULAR** (utilisez si vous n'avez pas besoin de `originCaller`)
-- `useVerifierMode: true`  → **VERIFIER** (DA visible comme `originCaller` sur votre dApp)
+Restart the relayer after changes.
 
 ---
 
-### 5. Authentifier et appeler via le relayer
+## 5. Auth + invoke
 
 ```ts
 import { RelayerAuthClient, RelayerSession } from "waves-da-sdk";
 
-const authClient = new RelayerAuthClient("http://your-relayer");
-const session    = new RelayerSession();
+const auth = await new RelayerAuthClient(RELAYER_URL).loginAndAuthenticate(
+  signer,
+  new RelayerSession()
+);
 
-// Une seule étape : login + auth + token JWT
-const auth = await authClient.loginAndAuthenticate(signer, session);
-
-// Appeler votre dApp
-const res = await fetch("http://your-relayer/invoke", {
+const res = await fetch(`${RELAYER_URL}/invoke`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${auth.token}`,
+    Authorization: `Bearer ${auth.token}`,
   },
   body: JSON.stringify({
     eoa: auth.eoa,
-    targetDapp: "3PYourDappAddress...",
+    targetDapp: YOUR_DAPP_ADDRESS,
     function: "deposit",
-    args: [1000000],
-    payments: [{ amount: 5000000 }],
+    args: [1_000_000],
+    payments: [],
   }),
 });
-
-const { txId } = await res.json();
 ```
 
----
-
-## Checklist
-
-- [ ] Vérifier si l'utilisateur a un DA : `getActiveDAOrNull`
-- [ ] Gérer le cas "pas de DA" : rediriger ou flow de création
-- [ ] Autoriser le relayer sur le DA (une fois par utilisateur)
-- [ ] Configurer `dappConfig.json` pour vos méthodes
-- [ ] Implémenter l'auth JWT dans votre frontend
+Full example: [examples/authFlow.ts](https://github.com/Waves-Dapp-Abstraction/waves-da-sdk/blob/master/examples/authFlow.ts)
 
 ---
 
-## Dépannage
+## Troubleshooting
 
-**"User has no DA"**
-→ L'utilisateur n'a pas encore de DA wallet. Redirigez vers waves-da.com ou lancez le flow de création.
+| Error | Likely cause |
+|--------|----------------|
+| `DA_NOT_FOUND` | No DA on Registry for this EOA |
+| `401` | Expired JWT — call `loginAndAuthenticate` again |
+| `403 METHOD_NOT_ALLOWED` | Method missing from `dappConfig.json` |
+| `403 DAPP_NOT_WHITELISTED` | dApp address missing from `dappConfig.json` |
+| Wrong `originCaller` | Set `useVerifierMode: true` for that method |
+| On-chain reject | Missing `approveMethods` or wrong `relayerPubKey` |
+| `REFUND_GUARD_FAILED` | REGULAR: DA lacks WAVES to refund relayer fee |
 
-**"401 Unauthorized"**
-→ Token expiré. `loginAndAuthenticate` re-authentifie automatiquement.
-
-**"403 METHOD_NOT_ALLOWED"**
-→ La méthode n'est pas dans votre `dappConfig.json`. Ajoutez-la.
-
-**"`originCaller` n'est pas l'utilisateur"**
-→ Vous êtes en REGULAR mode. Passez à `useVerifierMode: true` pour cette méthode.
+Advanced args: [ARG_TYPES.md](ARG_TYPES.md)
