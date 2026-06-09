@@ -1,6 +1,6 @@
 # Waves DA — Documentation
 
-**Testnet is ready to integrate.** Mainnet registry and audit are still pending (checklists in monorepo `internal/`, not published).
+**Testnet is ready to integrate.** Mainnet is not available yet.
 
 | Doc | What |
 |-----|------|
