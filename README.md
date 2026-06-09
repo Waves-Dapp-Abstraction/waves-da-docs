@@ -1,5 +1,7 @@
 # Waves DA — Documentation
 
+> **Beta — testnet only.** Early release for **Waves testnet** (`CHAIN_ID=84`) integration and evaluation. **Do not use on mainnet or with real funds.** Use at your own risk.
+
 **Testnet is ready to integrate.** Mainnet is not available yet.
 
 | Doc | What |
