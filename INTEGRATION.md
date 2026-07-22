@@ -1,5 +1,7 @@
 # Integration guide — dApp + DA
 
+> **Beta** — testnet and mainnet. Use matching `NODE_URL`, `CHAIN_ID`, and Registry per [REGISTRY.md](REGISTRY.md). Not audited.
+
 Builds on [QUICKSTART.md](QUICKSTART.md). Relayer HTTP API: [waves-da-relayer README](https://github.com/Waves-Dapp-Abstraction/waves-da-relayer/blob/master/README.md).
 
 ---
@@ -29,21 +31,39 @@ Builds on [QUICKSTART.md](QUICKSTART.md). Relayer HTTP API: [waves-da-relayer RE
 import { getActiveDAOrNull } from "waves-da-sdk";
 
 const da = await getActiveDAOrNull(nodeUrl, {
-  registry: "3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr",
+  registry: REGISTRY_ADDRESS, // testnet or mainnet — see REGISTRY.md
   eoa: userAddress,
 });
 
 if (!da) {
-  // Send user to DA creation (your UI or hosted manager)
+  // Option A: window.location.href = "https://waves-da.com/";
+  // Option B: open your in-app DA creation wizard (SDK flow below)
 }
 ```
 
 ---
 
-## 2. Create a DA (optional)
+## 2. Create & manage a DA (two options)
 
-- **Recommended:** host or link a DA Manager UI for end users.
-- **In-app:** follow the four steps in the [sdk README](https://github.com/Waves-Dapp-Abstraction/waves-da-sdk/blob/master/README.md) (`randomSeed` → fund → deploy script → `initAndRegister`).
+Users need a DA on the shared Registry for their network before `approveMethods` and invokes.
+
+### Option A — Hosted manager (simplest)
+
+Send users to **[waves-da.com](https://waves-da.com/)** to:
+
+- Create and register a DA on the Registry (mainnet or testnet)
+- Approve relayers, set payment caps, deposit/withdraw, pause
+
+Your dApp only needs to detect `getActiveDAOrNull` and, if missing, redirect to the manager. After they return with a DA, continue with §3 (approve your relayer if not already done on waves-da.com).
+
+### Option B — In your dApp (SDK)
+
+Embed creation and management in your product:
+
+- **Create:** four steps in the [sdk README](https://github.com/Waves-Dapp-Abstraction/waves-da-sdk/blob/master/README.md) (`randomSeed` → fund → deploy script → `initAndRegister`).
+- **Manage:** call owner helpers (`buildApproveMethodsTx`, caps, withdraw, etc.) from your UI, or deep-link to [waves-da.com](https://waves-da.com/) for permissions/caps only.
+
+Use **A** when you want zero DA UI work; use **B** when you need a fully branded flow. Relayer + SDK invoke path is the same either way.
 
 ---
 
@@ -58,7 +78,7 @@ const { relayerPubKey } = await fetch(`${RELAYER_URL}/info`).then((r) => r.json(
 
 const tx = buildApproveMethodsTx(
   {
-    chainId: 84,
+    chainId: 87, // or 84 testnet — must match node + registry
     da: da.da,
     fee: 500_000,
     relayerPubKeyBase58: relayerPubKey,

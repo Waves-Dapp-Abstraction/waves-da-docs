@@ -1,5 +1,7 @@
 # Registry — addresses per network
 
+**Mainnet (copy-paste):** `3PR3W9fvDRsDv63enfmhVKK2S3TNDJBQ57j` — `CHAIN_ID=87`
+
 **Testnet (copy-paste):** `3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr` — `CHAIN_ID=84`
 
 The Registry maps **EOA → active DA wallet**.
@@ -13,7 +15,7 @@ The Registry maps **EOA → active DA wallet**.
 | Network | Chain ID | Registry address | Status |
 |---------|----------|------------------|--------|
 | Testnet | `84` | `3MpHSUmakaCCcQkwATctWuChM6QkX3dBWAr` | Deployed |
-| Mainnet | `87` | `TBD` | Not published yet |
+| Mainnet | `87` | `3PR3W9fvDRsDv63enfmhVKK2S3TNDJBQ57j` | Déployé (canonique mainnet) |
 
 ---
 
@@ -23,7 +25,7 @@ The Registry maps **EOA → active DA wallet**.
 |-----------|---------|
 | Relayer `.env` | `REGISTRY_ADDRESS` |
 | SDK | `registry` in `getActiveDAOrNull(nodeUrl, { registry, eoa })` |
-| Your dApp config | Same base58 on testnet |
+| Your dApp config | Same base58 as the network you target ([REGISTRY.md](REGISTRY.md)) |
 
 **Node URL** must match the network (`nodes-testnet` vs mainnet).
 
