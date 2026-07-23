@@ -150,6 +150,6 @@ Full example: [examples/authFlow.ts](https://github.com/Waves-Dapp-Abstraction/w
 | `403 DAPP_NOT_WHITELISTED` | dApp address missing from `dappConfig.json` |
 | Wrong `originCaller` | Set `useVerifierMode: true` for that method |
 | On-chain reject | Missing `approveMethods` or wrong `relayerPubKey` |
-| `REFUND_GUARD_FAILED` | REGULAR: DA lacks WAVES to refund relayer fee |
+| `REFUND_GUARD_FAILED` | Read `details.subCode`: `RELAYER_LOW_WAVES` = fund **relayer**; `DA_LOW_WAVES` / `DA_LOW_ASSET` = fund **DA**; `DAPP_REJECTED` = permissions/args/dApp logic; `REFUND_TRACE_MISSING` = DA did not refund fee in trace. See `details.hint`. |
 
 Advanced args: [ARG_TYPES.md](ARG_TYPES.md)
